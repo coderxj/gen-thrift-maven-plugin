@@ -16,131 +16,63 @@ package com.acme.plugins;
  * limitations under the License.
  */
 
+import com.acme.plugins.util.Constants;
+import com.acme.plugins.util.FileUtil;
 import org.apache.maven.plugin.AbstractMojo;
+import org.apache.maven.plugins.annotations.Mojo;
+import org.apache.maven.plugins.annotations.Parameter;
 
 import java.io.*;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 
-/**
- * @goal run
- * @phase process-sources
- */
+@Mojo(name = "run")
 public class GenThrift extends AbstractMojo {
 
-    private final String DEFUALT_CURRENT_PATH = System.getProperty("user.dir");
-    private final String DEFUALT_ORIGINAL_OUTPUT_PATH = DEFUALT_CURRENT_PATH + "/gen-java/";
-    private final String DEFUALT_NEW_OUTPUT_PATH = DEFUALT_CURRENT_PATH + "/src/main/java";
-
-    private String CURRENT_PATH = DEFUALT_CURRENT_PATH;
-    private String ORIGINAL_OUTPUT_PATH = DEFUALT_ORIGINAL_OUTPUT_PATH;
-    private String NEW_OUTPUT_PATH = DEFUALT_NEW_OUTPUT_PATH;
-    private String NO_WARNNING = "FALSE";
-
-    private Map<String, String> config = new HashMap<String, String>(){{
-        put("CURRENT_PATH", CURRENT_PATH);
-        put("ORIGINAL_OUTPUT_PATH", ORIGINAL_OUTPUT_PATH);
-        put("NEW_OUTPUT_PATH", NEW_OUTPUT_PATH);
-        put("NO_WARNNING", NO_WARNNING);
-    }};
+    @Parameter(property = "run.currentPath")
+    private String currentPath;
+    @Parameter(property = "run.outputPath")
+    private String outputPath;
 
     public void execute() {
-        File file = new File(config.get("CURRENT_PATH"));
+        init();
 
-        readConfig(file);
+        if(!outputPathIsExist()){
+            exec("mkdir -p " + outputPath);
+        }
+
+        File file = new File(currentPath);
 
         outputConfig();
 
         System.out.println("[INFO]【开始】正在生成java文件");
         long b = System.currentTimeMillis();
 
-        Map<String, String> filesMap = searchFiles(file, ".*\\.thrift");
+        Map<String, String> filesMap = FileUtil.searchFiles(file, ".*\\.thrift");
 
         int fileNums = genThrift(filesMap);
-
-        moveAndDeleteFiles();
 
         if(fileNums == 0)
             System.out.println("[INFO]【结束】请检查当前目录下是否有thrift文件");
         else
-            System.out.println("[INFO]【结束】java文件已生成至目录" + config.get("NEW_OUTPUT_PATH"));
+            System.out.println("[INFO]【结束】java文件已生成至目录" + outputPath);
         System.out.println("[INFO]【耗时】" + (System.currentTimeMillis() - b) / 1000.0 + " s");
 
     }
 
-    private void readConfig(File file){
-        Map<String, String> res = searchFiles(file, ".*\\.tconfig");
-        for (Map.Entry<String, String> entry : res.entrySet()){
-            paserConfigFile(entry.getValue());
-            break;
-        }
-    }
-
-    private void paserConfigFile(String path){
-        File f = new File(path);
-        BufferedReader reader = null;
-        try {
-            reader = new BufferedReader(new FileReader(f));
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String[] cf = paserConfigLine(line);
-                if(cf != null && config.containsKey(cf[0].toUpperCase())){
-                    config.put(cf[0].toUpperCase(), CURRENT_PATH + cf[1]);
-                }
-            }
-        } catch (IOException e) {
-            System.out.println(e);
-        } finally {
-            if(reader != null){
-                try {
-                    reader.close();
-                } catch (IOException e) {
-                    System.out.println(e);
-                }
-            }
-        }
-    }
-
-    private String[] paserConfigLine(String line){
-        if(line.trim().toLowerCase().matches("thrift\\.config\\..*=.*")){
-            Pattern p = Pattern.compile("thrift\\.config\\.(.*)=(.*)");
-            Matcher matcher = p.matcher(line.trim().toLowerCase());
-            if(matcher.find()){
-                return new String[]{matcher.group(1), matcher.group(2)};
-            }
-        }
-        return null;
+    private void init(){
+        if(currentPath == null || "".equals(currentPath))
+            currentPath = Constants.DEFUALT_CURRENT_PATH;
+        if(outputPath == null || "".equals(outputPath))
+            outputPath = Constants.DEFUALT_OUTPUT_PATH;
+        else
+            outputPath = currentPath + outputPath;
     }
 
     private void outputConfig(){
         System.out.println("[INFO]【配置信息】");
-        for (Map.Entry<String, String> entry : config.entrySet()){
-            System.out.println("[INFO] " + entry.getKey().toLowerCase() + "=" + entry.getValue().toLowerCase());
-        }
-    }
-
-    private Map<String, String> searchFiles(File file, String pattern){
-        Map<String, String> res = new HashMap<>();
-        searchFiles(file, pattern, res);
-        return res;
-    }
-
-    private void searchFiles(File file, String pattern, Map<String, String> res){
-        if(!file.exists()){
-            return;
-        } else {
-            if(file.isFile() && file.getName().matches(pattern)){
-                res.put(file.getName(), file.getPath());
-            } else if(file.isDirectory()){
-                File[] files = file.listFiles();
-                for (int i = 0; i < files.length; i++) {
-                    searchFiles(files[i], pattern, res);
-                }
-            }
-        }
+        System.out.println("[INFO] " + "currentPath" + "=" + currentPath);
+        System.out.println("[INFO] " + "outputPath" + "=" + outputPath);
     }
 
     private int genThrift(Map<String, String> filesMap){
@@ -148,20 +80,15 @@ public class GenThrift extends AbstractMojo {
         int i = 0;
         for (Map.Entry<String, String> entry : filesMap.entrySet()){
             System.out.println(++i + " -- " + entry.getKey());
-            exec("thrift -gen java " + entry.getValue());
+            exec("thrift -out " + outputPath + " -gen java " + entry.getValue());
         }
         System.out.println("---------------------------------------------");
         return i;
     }
 
-    private void moveAndDeleteFiles(){
-        File[] files = (new File(config.get("NEW_OUTPUT_PATH"))).listFiles();
-        if (files != null && files.length > 0) {
-            exec("rm -r " + config.get("NEW_OUTPUT_PATH"));
-        }
-
-        exec("mv " + config.get("ORIGINAL_OUTPUT_PATH") + " " + config.get("NEW_OUTPUT_PATH"));
-        exec("rm -r " + config.get("ORIGINAL_OUTPUT_PATH"));
+    private boolean outputPathIsExist(){
+        File file = new File(outputPath);
+        return file.exists() && file.isDirectory();
     }
 
     public void exec(String cmd) {
@@ -172,7 +99,6 @@ public class GenThrift extends AbstractMojo {
             BufferedReader br = new BufferedReader(new InputStreamReader(in));
 
             for(String line = br.readLine(); line != null; line = br.readLine()) {
-                if(config.get("NO_WARNNING").equalsIgnoreCase("FALSE"))
                     System.out.println(line);
             }
 
