@@ -16,7 +16,7 @@
 <plugin>
     <groupId>com.acme.plugins</groupId>
     <artifactId>gen-thrift</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>xxx</version>
 </plugin>
 ```
 
@@ -25,3 +25,10 @@
 插件扩展：
 
 目前只有最简单的自动生成目标语言文件功能，加了配置文件的功能。
+
+版本更新：
+V1.0.1
+*去掉文件配置的方式，改用maven常用的configuration标签设置参数
+*生成java文件，直接指定生成目录
+*支持修改输出目录
+
